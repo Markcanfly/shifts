@@ -16,7 +16,7 @@ schedule = data.load_data(json_schedule)
 m = mip.Model()
 works: Dict[Tuple[models.UserId, models.ShiftId], mip.Var] = {}
 for sp in schedule.preferences:
-    works[sp.user.id, sp.shift.id] = m.add_var(f'{sp.user.id} works {sp.shift.id}', var_type=mip.BINARY)
+    works[sp.user.id, sp.shift.id] = m.add_var(var_type=mip.BINARY)
     # Can the name be more descriptive? Will the output format support special characters?
 # Apparently '<' is not implemented for LinExpr, only <=
 # Constraints
@@ -28,12 +28,13 @@ for shift in schedule.shifts:
     m += mip.xsum([v[1] for v in works.items() if v[0][1] == shift.id]) <= shift.capacity
 
 # Do not assign a person to overlapping shifts
-for k1, w1 in works.items():
-    u1, s1 = k1
-    for k2, w2 in works.items():
-        u2, s2 = k2
-        if u1 == u2 and schedule.shift[s1] & schedule.shift[s2]:
-            m += w1 + w2 <= 1 # Person can take either shift, but not both
+for i1, i2 in combinations(works.items(), r=2):
+    u1, s1 = i1[0]
+    w1 = i1[1]
+    u2, s2 = i2[0]
+    w2 = i2[1]
+    if u1 == u2 and schedule.shift[s1] & schedule.shift[s2]:
+        m += w1 + w2 <= 1 # Person can take either shift, but not both
 
 # Maximum daily shifts = 1
 for shifts_on_day in schedule.shifts_for_day.values():
@@ -45,15 +46,16 @@ for shifts_on_day in schedule.shifts_for_day.values():
 ## Health, safety, and legal constraints
 
 # Let people sleep
-for k1, w1 in works.items():
-    u1, s1 = k1
+for i1, i2 in combinations(works.items(), r=2):
+    u1, s1 = i1[0]
+    w1 = i1[1]
     S1 = schedule.shift[s1]
-    for k2, w2 in works.items():
-        u2, s2 = k2
-        S2 = schedule.shift[s2]
-        if u1 == u2 and S1 != S2 and S1.ends_late and S2.begin - S1.end <= timedelta(9):
-            m += w1 + w2 <= 1 # Can't work both shifts, need sleep
-        
+    u2, s2 = i2[0]
+    w2 = i2[1]
+    S2 = schedule.shift[s2]
+    if u1 == u2 and S1 != S2 and S1.ends_late and S2.begin - S1.end <= timedelta(9):
+        m += w1 + w2 <= 1 # Can't work both shifts, need sleep
+      
 # Min-max work hours
 for user in schedule.users:
     m += (timedelta(hours=user.min_hours).total_seconds() <= 
@@ -68,15 +70,35 @@ for user in schedule.users:
 pscore: Dict[models.UserId, int] = {u.id:mip.LinExpr() for u in schedule.users}
 for k, w in works.items():
     u, s = k
-    pscore[u] += schedule.preference[s, u] * w
-'''Exception has occurred: DeprecationWarning
-Inplace operations are deprecated
-  File "/Users/markvarga/Documents/Documents – Mark’s MacBook Pro/workspace/python/solver/shifts/main.py", line 71, in <module>
-    pscore[u] += schedule.preference[s, u] * w
-    '''
+    pscore[u] = pscore[u] + schedule.preference[s, u] * w
 
-m.objective = mip.minimize(
-    max(list(pscore.values()))
-    ) # does this work
+def maxge(it):
+    '''Max function that uses >= to compare instead of >'''
+    m = it[0]
+    for el in it[1:]:
+        if el >= m: m = el
+    return m
+
+m.objective = mip.minimize(maxge(list(pscore.values())))
 
 m.write('model.lp')
+print('Model built, running solver')
+status = m.optimize()
+
+if status == mip.OptimizationStatus.OPTIMAL:
+    print('optimal solution cost {} found'.format(m.objective_value))
+elif status == mip.OptimizationStatus.FEASIBLE:
+    print('sol.cost {} found, best possible: {}'.format(m.objective_value, m.objective_bound))
+elif status == mip.OptimizationStatus.NO_SOLUTION_FOUND:
+    print('no feasible solution found, lower bound is: {}'.format(m.objective_bound))
+if status == mip.OptimizationStatus.OPTIMAL or status == mip.OptimizationStatus.FEASIBLE:
+    print('solution found, written to file')
+    sols = []
+    for k, w in works.items():
+        u, s = k
+        if w.x is not None and w.x:
+            sols.append({'user': u, 'shift': s})
+    
+    with open('solution.json', 'w') as f:
+        json.dump(sols, f)
+
