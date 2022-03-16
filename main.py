@@ -58,9 +58,9 @@ for i1, i2 in combinations(works.items(), r=2):
       
 # Min-max work hours
 for user in schedule.users:
-    m += (timedelta(hours=user.min_hours).total_seconds() <= 
-        mip.xsum([w * schedule.shift[k[1]].length.total_seconds() for k, w in works.items()]) 
-        <= timedelta(hours=user.max_hours).total_seconds())
+    work_time = mip.xsum([w * schedule.shift[k[1]].length.total_seconds() for k, w in works.items()])
+    m += timedelta(hours=user.min_hours).total_seconds() <= work_time
+    m += work_time <= timedelta(hours=user.max_hours).total_seconds()
 
 # Objective function
 # Unhappiness value = sum of preference scores for chosen shifts
