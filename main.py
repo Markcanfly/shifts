@@ -70,7 +70,7 @@ for i1, i2 in combinations(works.items(), r=2):
       
 # Min-max work hours
 for user in schedule.users:
-    work_time = mip.xsum([w * schedule.shift[k[1]].length.total_seconds() for k, w in works.items()])
+    work_time = mip.xsum([w * schedule.shift[k[1]].length.total_seconds() for k, w in works.items() if k[0] == user.id])
     m += timedelta(hours=user.min_hours).total_seconds() <= work_time, f'{name(user.id)}_works_min_{int(timedelta(hours=user.min_hours).total_seconds())}_seconds'
     m += work_time <= timedelta(hours=user.max_hours).total_seconds(), f'{name(user.id)}_works_max_{int(timedelta(hours=user.max_hours).total_seconds())}_seconds'
 
