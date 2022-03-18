@@ -11,12 +11,13 @@ def name(id: str) -> str:
     '''Extract name from email'''
     return id.split('@')[0]
 
-def aname(num) -> str:
-    '''Alpha name from number'''
-    if not isinstance(num, int):
-        raise ValueError(f'{num} should be int to call this')
-    v = 'abcdefghij'
-    return ''.join([v[int(c)] for c in list(str(num))])
+def shiftstr(s: models.Shift) -> str:
+    '''
+    LP-printable shift data
+    Example: 25565@{03-11|15;30-19;30}
+    '''
+    s = schedule.shift[s.id]
+    return f'{s.id}@{{{s.begin.month:02}-{s.begin.day:02}|{s.begin.hour:02};{s.begin.minute:02}-{s.end.hour:02};{s.end.minute:02}}}'
 
 if 1 < len(sys.argv) <= 2:
     with open(sys.argv[1], 'r') as f:
@@ -28,7 +29,7 @@ schedule = data.load_data(json_schedule)
 m = mip.Model()
 works: Dict[Tuple[models.UserId, models.ShiftId], mip.Var] = {}
 for sp in schedule.preferences:
-    works[sp.user.id, sp.shift.id] = m.add_var(f'{name(sp.user.id)}_works_{aname(sp.shift.id)}', var_type=mip.BINARY)
+    works[sp.user.id, sp.shift.id] = m.add_var(f'{name(sp.user.id)}_works_{shiftstr(schedule.shift[sp.shift.id])}', var_type=mip.BINARY)
     # Can the name be more descriptive? Will the output format support special characters?
 # Apparently '<' is not implemented for LinExpr, only <=
 # Constraints
@@ -37,7 +38,7 @@ for sp in schedule.preferences:
 
 # Do not exceed shift capacity
 for shift in schedule.shifts:
-    m += mip.xsum([v[1] for v in works.items() if v[0][1] == shift.id]) <= shift.capacity, f'{aname(shift.id)}_capacity'
+    m += mip.xsum([v[1] for v in works.items() if v[0][1] == shift.id]) <= shift.capacity, f'{shiftstr(schedule.shift[shift.id])}_capacity'
 
 # Do not assign a person to overlapping shifts
 for i1, i2 in combinations(works.items(), r=2):
@@ -46,7 +47,7 @@ for i1, i2 in combinations(works.items(), r=2):
     u2, s2 = i2[0]
     w2 = i2[1]
     if u1 == u2 and schedule.shift[s1] & schedule.shift[s2]:
-        m += w1 + w2 <= 1, f'{name(u1)}_cant_work_overlapping_shifts_{aname(s1)}_and_{aname(s2)}'
+        m += w1 + w2 <= 1, f'{name(u1)}_cant_work_overlapping_shifts_{shiftstr(schedule.shift[s1])}_and_{shiftstr(schedule.shift[s2])}'
 
 # Maximum daily shifts = 1
 for day, shifts_on_day in schedule.shifts_for_day.items():
@@ -66,7 +67,7 @@ for i1, i2 in combinations(works.items(), r=2):
     w2 = i2[1]
     S2 = schedule.shift[s2]
     if u1 == u2 and S1 != S2 and S1.ends_late and S2.begin - S1.end <= timedelta(9):
-        m += w1 + w2 <= 1, f'{name(u1)}_cant_work_sleep_inconvenient_shifts_{aname(s1)}_and_{aname(s2)}'
+        m += w1 + w2 <= 1, f'{name(u1)}_cant_work_sleep_inconvenient_shifts_{shiftstr(schedule.shift[s1])}_and_{shiftstr(schedule.shift[s2])}'
 
 # Min-max work hours
 for user in schedule.users:
