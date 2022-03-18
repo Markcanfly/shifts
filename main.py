@@ -67,7 +67,7 @@ for i1, i2 in combinations(works.items(), r=2):
     S2 = schedule.shift[s2]
     if u1 == u2 and S1 != S2 and S1.ends_late and S2.begin - S1.end <= timedelta(9):
         m += w1 + w2 <= 1, f'{name(u1)}_cant_work_sleep_inconvenient_shifts_{aname(s1)}_and_{aname(s2)}'
-      
+
 # Min-max work hours
 for user in schedule.users:
     work_time = mip.xsum([w * schedule.shift[k[1]].length.total_seconds() for k, w in works.items() if k[0] == user.id])
@@ -91,7 +91,7 @@ def maxge(it):
         if el >= m: m = el
     return m
 
-m.objective = mip.minimize(maxge(list(pscore.values())))
+m.objective = mip.minimize(mip.xsum(pscore.values()))
 
 m.write('model.lp')
 print('Model built, running solver')
