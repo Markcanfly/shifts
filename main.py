@@ -66,7 +66,7 @@ for i1, i2 in combinations(works.items(), r=2):
     u2, s2 = i2[0]
     w2 = i2[1]
     S2 = schedule.shift[s2]
-    if u1 == u2 and S1 != S2 and S1.ends_late and S2.begin - S1.end <= timedelta(9):
+    if u1 == u2 and S1 != S2 and S1.ends_late and S2.begin - S1.end <= timedelta(hours=9) and S1.end <= S2.begin:
         m += w1 + w2 <= 1, f'{name(u1)}_cant_work_sleep_inconvenient_shifts_{shiftstr(schedule.shift[s1])}_and_{shiftstr(schedule.shift[s2])}'
 
 # Min-max work hours
