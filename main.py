@@ -2,7 +2,6 @@ import sys
 import data, models
 import json
 import mip
-import re
 from datetime import timedelta
 from typing import Dict, List, Tuple
 from itertools import combinations
