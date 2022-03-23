@@ -2,7 +2,7 @@ import sys
 import data, models
 import json
 import mip
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Dict, List, Tuple
 from itertools import combinations
 
@@ -19,13 +19,15 @@ def shiftstr(s: models.Shift) -> str:
     return f'{s.id}@{{{s.begin.month:02}-{s.begin.day:02}|{s.begin.hour:02};{s.begin.minute:02}-{s.end.hour:02};{s.end.minute:02}}}'
 
 if 1 < len(sys.argv) <= 2:
-    with open(sys.argv[1], 'r') as f:
+    fname = sys.argv[1]
+    with open(fname, 'r') as f:
         json_schedule = json.load(f)
 else: raise ValueError('Provide the path to the json file')
 
 schedule = data.load_data(json_schedule)
-
-m = mip.Model()
+begin = datetime.now()
+SOLVER = mip.GUROBI
+m = mip.Model(solver_name=SOLVER)
 works: Dict[Tuple[models.UserId, models.ShiftId], mip.Var] = {}
 for sp in schedule.preferences:
     works[sp.user.id, sp.shift.id] = m.add_var(f'{name(sp.user.id)}_works_{shiftstr(schedule.shift[sp.shift.id])}', var_type=mip.BINARY)
@@ -91,18 +93,25 @@ def maxge(it):
         if el >= m: m = el
     return m
 
-m.objective = mip.minimize(mip.xsum(pscore.values()))
+max_val = m.add_var('max_pscore')
+for u in schedule.users:
+    m += max_val >= pscore[u.id]
 
+WORST_WEIGHT = 1000
+m.objective = mip.minimize(mip.xsum(pscore.values()) + WORST_WEIGHT * max_val)
+m.max_mip_gap = 0.00001 # Objective value max opt tolerance
 m.write('model.lp')
 print('Model built, running solver')
 status = m.optimize()
-
+end = datetime.now()
+Walltime = str((end-begin).total_seconds())
 if status == mip.OptimizationStatus.OPTIMAL:
     print('optimal solution cost {} found'.format(m.objective_value))
 elif status == mip.OptimizationStatus.FEASIBLE:
     print('sol.cost {} found, best possible: {}'.format(m.objective_value, m.objective_bound))
 elif status == mip.OptimizationStatus.NO_SOLUTION_FOUND:
     print('no feasible solution found, lower bound is: {}'.format(m.objective_bound))
+    raise ValueError(f'{fname} doesn\'t have a solution')
 if status == mip.OptimizationStatus.OPTIMAL or status == mip.OptimizationStatus.FEASIBLE:
     print('solution found, written to file')
     sols = []
@@ -110,7 +119,9 @@ if status == mip.OptimizationStatus.OPTIMAL or status == mip.OptimizationStatus.
         u, s = k
         if w.x is not None and w.x:
             sols.append({'user': u, 'shift': s})
-    
+    print(f'Worst prefscore: {max([v.x for v in pscore.values()])}')
+    print(f'Sum prefscore: {sum([v.x for v in pscore.values()])}')
+    print(f'Avg prefscore: {sum([v.x for v in pscore.values()]) / len(schedule.users)}')
     with open('solution.json', 'w') as f:
         json.dump(sols, f)
-
+    data.stats_to_xml(schedule, pscore, sols, Walltime, SOLVER).write(fname.replace('.json', '_stat.xml'))

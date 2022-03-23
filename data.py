@@ -1,8 +1,8 @@
 """Handling of raw data from files"""
-import json
 from typing import List, Dict
 from datetime import datetime
-from models import Schedule, User, Shift, ShiftPreference
+from models import Schedule, User, Shift, ShiftPreference, UserId
+import xml.etree.ElementTree as ET
 import pytz
 
 def filter_unique_ordered(l):
@@ -125,3 +125,37 @@ def load_data(data: dict) -> Schedule:
     users = get_users(rusers)
     preferences = get_preferences(users, shifts, rusers)
     return Schedule(users,shifts,preferences)
+
+def stats_to_xml(schedule: Schedule, pscore: Dict, solutions: List[Dict], wall: int, solver_name) -> ET.ElementTree:
+    root = ET.Element('Schedule')
+    ET.SubElement(root, 'Name').text = f'{min([s.begin for s in schedule.shifts])}-{max([s.end for s in schedule.shifts])}'
+    solstats = ET.SubElement(root, 'Solution')
+    pscore_values = [v.x for v in pscore.values()]
+    ET.SubElement(solstats, 'Solver').text = solver_name
+    ET.SubElement(solstats, 'WorstPrefScore').text = str(int(max(pscore_values)))
+    ET.SubElement(solstats, 'AvgPrefScore').text = str(sum(pscore_values) / len(schedule.users))
+    ET.SubElement(solstats, 'SumPrefScore').text = str(int(sum(pscore_values)))
+    ET.SubElement(solstats, 'Walltime').text = str(wall)
+    schedstats = ET.SubElement(root, 'Info')
+    ET.SubElement(schedstats, 'NShifts').text = str(len(schedule.shifts))
+    ET.SubElement(schedstats, 'NCapacities').text = str(sum([s.capacity for s in schedule.shifts]))
+    shifts = ET.SubElement(root, 'Shifts')
+    for shift in schedule.shifts:
+        shiftel = ET.SubElement(shifts, 'Shift')
+        ET.SubElement(shiftel, 'ID').text = str(shift.id)
+        ET.SubElement(shiftel, 'Begin').text = str(int(shift.begin.timestamp()))
+        ET.SubElement(shiftel, 'End').text = str(int(shift.end.timestamp()))
+        ET.SubElement(shiftel, 'Duration').text = str(int(shift.length.total_seconds()))
+        solved_user = ET.SubElement(shiftel, 'User')
+        try: solved_user.text = str([d['user'] for d in solutions if d['shift'] == shift.id][0])
+        except IndexError: solved_user.text = None
+        prefs = ET.SubElement(shiftel, 'Preferences')
+        for pref in schedule.preferences:
+            if pref.shift != shift:
+                continue
+            prefel = ET.SubElement(prefs, 'Preference')
+            ET.SubElement(prefel, 'User').text = str(pref.user.id)
+            ET.SubElement(prefel, 'Score').text = str(pref.priority)
+    tree = ET.ElementTree(root)
+    ET.indent(tree, space="\t", level=0)
+    return tree
