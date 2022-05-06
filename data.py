@@ -126,12 +126,20 @@ def load_data(data: dict) -> Schedule:
     preferences = get_preferences(users, shifts, rusers)
     return Schedule(users,shifts,preferences)
 
-def stats_to_xml(schedule: Schedule, pscore: Dict, solutions: List[Dict], wall: int, solver_name) -> ET.ElementTree:
+def stats_to_xml(schedule: Schedule, pscore: Dict, solutions: List[Dict], wall: int, solver_name: str, worst_weight: int) -> ET.ElementTree:
     root = ET.Element('Schedule')
     ET.SubElement(root, 'Name').text = f'{min([s.begin for s in schedule.shifts])}-{max([s.end for s in schedule.shifts])}'
     solstats = ET.SubElement(root, 'Solution')
     pscore_values = [v.x for v in pscore.values()]
     ET.SubElement(solstats, 'Solver').text = solver_name
+    if solutions is None:
+        if wall >= 230: # idk
+            ET.SubElement(solstats, 'Status').text = 'Timeout'
+        else:
+            ET.SubElement(solstats, 'Status').text = 'Unsolvable'
+    else:
+        ET.SubElement(solstats, 'Status').text = 'Solved'
+    ET.SubElement(solstats, 'WorstScoreObjWeight').text = str(worst_weight)
     ET.SubElement(solstats, 'WorstPrefScore').text = str(int(max(pscore_values)))
     ET.SubElement(solstats, 'AvgPrefScore').text = str(sum(pscore_values) / len(schedule.users))
     ET.SubElement(solstats, 'SumPrefScore').text = str(int(sum(pscore_values)))
@@ -139,6 +147,7 @@ def stats_to_xml(schedule: Schedule, pscore: Dict, solutions: List[Dict], wall: 
     schedstats = ET.SubElement(root, 'Info')
     ET.SubElement(schedstats, 'NShifts').text = str(len(schedule.shifts))
     ET.SubElement(schedstats, 'NCapacities').text = str(sum([s.capacity for s in schedule.shifts]))
+    ET.SubElement(schedstats, 'NUsers').text = str(len(schedule.users))
     shifts = ET.SubElement(root, 'Shifts')
     for shift in schedule.shifts:
         shiftel = ET.SubElement(shifts, 'Shift')
