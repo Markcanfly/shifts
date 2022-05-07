@@ -100,7 +100,7 @@ max_val = m.add_var('max_pscore')
 for u in schedule.users:
     m += max_val >= pscore[u.id]
 
-m.objective = mip.minimize(AVG_WEIGHT * mip.xsum(pscore.values()) + WORST_WEIGHT * max_val)
+m.objective = mip.minimize(AVG_WEIGHT * mip.xsum(pscore.values()) / len(schedule.users) + WORST_WEIGHT * max_val)
 m.max_mip_gap = 0.00001 # Objective value max opt tolerance
 m.write('model.lp')
 print('Model built, running solver')
@@ -126,4 +126,4 @@ if status == mip.OptimizationStatus.OPTIMAL or status == mip.OptimizationStatus.
     print(f'Avg prefscore: {sum([v.x for v in pscore.values()]) / len(schedule.users)}')
     with open('solution.json', 'w') as f:
         json.dump(sols, f)
-    data.stats_to_xml(schedule, pscore, sols, Walltime, SOLVER, WORST_WEIGHT, AVG_WEIGHT).write(fname.replace('.json', f'_{SOLVER}_{WORST_WEIGHT}_stat.xml'))
+    data.stats_to_xml(schedule, pscore, sols, Walltime, SOLVER, WORST_WEIGHT, AVG_WEIGHT).write(fname.replace('.json', f'_{SOLVER}_{WORST_WEIGHT}_{AVG_WEIGHT}_stat.xml'))
