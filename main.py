@@ -18,17 +18,18 @@ def shiftstr(s: models.Shift) -> str:
     s = schedule.shift[s.id]
     return f'{s.id}@{{{s.begin.month:02}-{s.begin.day:02}|{s.begin.hour:02};{s.begin.minute:02}-{s.end.hour:02};{s.end.minute:02}}}'
 
-if len(sys.argv) == 4:
+if len(sys.argv) == 5:
     fname = sys.argv[1]
     with open(fname, 'r') as f:
         json_schedule = json.load(f)
-else: raise ValueError('Arguments: filepath solver worst_weight')
+else: raise ValueError('Arguments: filepath solver worst_weight avg_weight')
 
 schedule = data.load_data(json_schedule)
 begin = datetime.now()
 SOLVER = sys.argv[2]
 if SOLVER not in (mip.GRB, mip.CBC): raise ValueError('Invalid solver name')
 WORST_WEIGHT = int(sys.argv[3])
+AVG_WEIGHT = int(sys.argv[4])
 m = mip.Model(solver_name=SOLVER)
 works: Dict[Tuple[models.UserId, models.ShiftId], mip.Var] = {}
 for sp in schedule.preferences:
@@ -99,7 +100,7 @@ max_val = m.add_var('max_pscore')
 for u in schedule.users:
     m += max_val >= pscore[u.id]
 
-m.objective = mip.minimize(mip.xsum(pscore.values()) + WORST_WEIGHT * max_val)
+m.objective = mip.minimize(AVG_WEIGHT * mip.xsum(pscore.values()) + WORST_WEIGHT * max_val)
 m.max_mip_gap = 0.00001 # Objective value max opt tolerance
 m.write('model.lp')
 print('Model built, running solver')
@@ -125,4 +126,4 @@ if status == mip.OptimizationStatus.OPTIMAL or status == mip.OptimizationStatus.
     print(f'Avg prefscore: {sum([v.x for v in pscore.values()]) / len(schedule.users)}')
     with open('solution.json', 'w') as f:
         json.dump(sols, f)
-    data.stats_to_xml(schedule, pscore, sols, Walltime, SOLVER, WORST_WEIGHT).write(fname.replace('.json', f'_{SOLVER}_{WORST_WEIGHT}_stat.xml'))
+    data.stats_to_xml(schedule, pscore, sols, Walltime, SOLVER, WORST_WEIGHT, AVG_WEIGHT).write(fname.replace('.json', f'_{SOLVER}_{WORST_WEIGHT}_stat.xml'))
